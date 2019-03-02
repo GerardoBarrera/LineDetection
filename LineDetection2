@@ -1,0 +1,97 @@
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <iostream>
+using namespace std;
+using namespace cv;
+
+int main()
+{
+	VideoCapture cap(0);
+	Mat frame, redLine, LinesImg, HSV_Img;
+
+	if (!cap.isOpened())
+	{
+		return -1;
+	}
+
+	while (true)
+	{
+		bool frames = cap.read(frame);
+
+		if (!frames)
+		{
+			cap.open("laneE.mp4");
+			cap.read(frame);
+		}
+
+		//resize image
+		resize(frame, frame, Size(640, 480));
+
+		//region of interest box(x, y, b, c);
+		Rect const box(140, 260, 300, 185); //this mean the first corner is (x,y)=(100,295)
+											//and the second corner is (x + b, y+c )= (100 +400,295+185)
+		Mat ROI = frame(box);
+
+		// convert img to HSV Space
+		cvtColor(ROI, HSV_Img, COLOR_RGB2HSV);
+
+		//red color thresholding
+		Scalar redMinScalar = Scalar(80, 80, 0);
+		Scalar redMaxScalar = Scalar(131, 255, 255);
+
+		inRange(HSV_Img, redMinScalar, redMaxScalar, redLine);
+
+		addWeighted(redLine, 1.0, 0.0, 0.0, 0.0, LinesImg);
+
+		// Edge detection using canny detector
+		int minCannyThreshold = 190;
+		int maxCannyThreshold = 230;
+		Canny(LinesImg, LinesImg, minCannyThreshold, maxCannyThreshold, 5, true);
+
+		// Morphological Operation
+		Mat k = getStructuringElement(MORPH_ELLIPSE, Size(9, 9));
+
+		morphologyEx(LinesImg, LinesImg, MORPH_CLOSE, k);
+
+		// now applying hough transform TO DETECT Line in our image
+		vector<Vec4i> lines;
+		double rho = 1;
+		double theta = CV_PI / 180;
+		int threshold = 43;
+		double minLinLength = 35;
+		double maxLineGap = 210;
+
+		HoughLinesP(LinesImg, lines, rho, theta, threshold, minLinLength, maxLineGap);
+		int maxDistance = 0;
+		//draw our lines
+		for (size_t i = 0; i < lines.size(); i++)
+		{
+			Vec4i l = lines[i];
+			Scalar greenColor = Scalar(0, 250, 30);
+			line(ROI, Point(l[0], l[1]), Point(l[2], l[3]), greenColor, 3, LINE_AA);
+			if (l[1] > l[3] ) {
+				maxDistance = l[1];
+			}
+			else {
+				maxDistance = l[3] ;
+			}
+
+		}
+		cout << "maxDistance: " << maxDistance << endl;
+		namedWindow("frame");
+		moveWindow("frame", 275, 30);
+		imshow("frame", frame);
+
+		namedWindow("Red Line Tracking");
+		moveWindow("Red Line Tracking", 950, 280);
+		imshow("Red Line Tracking", redLine);
+
+		if (waitKey(30) == 27)
+		{
+			cout << "esc";
+			break;
+		}
+	}
+
+	return 0;
+}
